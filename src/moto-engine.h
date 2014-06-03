@@ -43,6 +43,10 @@ Entire range is [-8192; 8192].
 static const int32_t g_MotoStart[2]  = {          0, -300000000 }; /**< Position of start  in world map (in integer coordinates). */
 static const int32_t g_MotoFinish[2] = { 2140000000,  400000000 }; /**< Position of finish in world map (in integer coordinates). */
 
+static const int64_t g_MotoStartL[2]  = {          0, -300000000+((long)1<<32) }; /**< Position of start  in world map (in integer coordinates). */
+static const int64_t g_MotoFinishL[2] = { 2140000000,  400000000 }; /**< Position of finish in world map (in integer coordinates). */
+
+
 /**
 Coefficient for converting integer coordinates to real ones.
 Each coordinate is stored as int32_t. When integer overflows it automatically wraps,
@@ -107,6 +111,18 @@ typedef struct
 	int32_t AngVel; /**< Angular velocity stored as integer angle. */
 } MotoBody;
 
+
+/** \brief Result of frame evaluation.
+*
+* Value of this type is generated at the end of each frame.
+*/
+typedef enum
+{
+    MOTO_CONTINUE, /**< Game is not over, player can continue to play. */
+    MOTO_FAILURE,  /**< Game ended with failure. */
+    MOTO_SUCCESS,  /**< Player successfully completed game. */
+} EMotoResult;
+
 /** \brief Instant state of the game.
 *
 * Dynamic game state (not including static world). At each frame new state is generated.
@@ -122,18 +138,11 @@ typedef struct
 	int32_t  HeadPos[2]; /**< Head position in integer coordinates. */
 	int32_t  HeadVel[2]; /**< Head velocity in integer coordinates. */
 	bool     Dead;
+    EMotoResult curState;
+    int64_t  finishDistSq;
 } MotoState;
 
-/** \brief Result of frame evaluation.
-*
-* Value of this type is generated at the end of each frame.
-*/
-typedef enum
-{
-	MOTO_CONTINUE, /**< Game is not over, player can continue to play. */
-	MOTO_FAILURE,  /**< Game ended with failure. */
-	MOTO_SUCCESS,  /**< Player successfully completed game. */
-} EMotoResult;
+
 
 /** \brief Analog of Bitcoin nonce.
 *
@@ -143,8 +152,8 @@ typedef enum
 typedef struct
 {
 	uint32_t Nonce; /**< Nonce that was used to generate map. */
-	uint16_t NumFrames; /**< Number of frames used to complete level. */
-	uint16_t NumUpdates; /**< Number of changes in player input. */
+    uint16_t NumFrames; /**< Number of frames used to complete level. */
+    uint16_t NumUpdates; /**< Number of changes in player input. */
 	uint16_t Updates[MOTO_MAX_INPUTS]; /**< iFrameDelta*12 + Rotation*4 + Accel. */
 } MotoPoW;
 
@@ -169,7 +178,7 @@ void motoInitPoW(MotoPoW* pPoW);
 *
 * @return true if game was completed in less than TimeTarget frames.
 */
-bool motoCheck(const uint8_t* pBlock, const MotoPoW* pPoW);
+bool motoCheck(const uint8_t* pBlock, MotoPoW* pPoW);
 
 /** \brief Generate pseudo-random world.
 *
@@ -181,7 +190,7 @@ bool motoCheck(const uint8_t* pBlock, const MotoPoW* pPoW);
 * @return true if generated world is well-formed and false otherwise. Ill-formed world is one that seems impossible to complete but not necessarily so.
 */
 bool motoGenerateWorld(MotoWorld* pWorld, MotoState* pState, const uint8_t* pBlock, uint32_t Nonce);
-
+bool motoGenerateGoodWorld(MotoWorld* pWorld, MotoState* pState, const uint8_t* pBlock, MotoPoW* pow);
 /** \brief Evaluate several game frames.
 *
 * @param pState (in/out) - Game state that will be modified.
@@ -195,7 +204,9 @@ bool motoGenerateWorld(MotoWorld* pWorld, MotoState* pState, const uint8_t* pBlo
 */
 EMotoResult motoAdvance(MotoState* pState, MotoPoW* pPoW, const MotoWorld* pWorld, EMotoAccel Accel, EMotoRot Rotation, int16_t NumFrames);
 
-bool motoReplay(MotoState* pState, const MotoPoW* pPoW, const MotoWorld* pWorld, int16_t iToFrame);
+bool motoReplay(MotoState* pState, MotoPoW* pPoW, const MotoWorld* pWorld, int16_t iToFrame);
+
+bool recordInput(MotoPoW* pPoW, MotoState* pState, EMotoAccel Accel, EMotoRot Rotation);
 
 void motoF(float Fdxdy[3], float x, float y, const MotoWorld* pWorld);
 

@@ -269,7 +269,7 @@ void BTTracker::everySecond()
                 sendConnectRequest(false);
             else
             {
-                m_WaitInterval = 90*60;
+                m_WaitInterval = 10;
                 setStatus(STATUS_IDLE);
             }
         }

@@ -17,6 +17,8 @@
 #include <boost/interprocess/sync/file_lock.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <openssl/crypto.h>
+#include <thread>
+
 
 #ifndef WIN32
 #include <signal.h>
@@ -449,6 +451,21 @@ void ThreadImport(std::vector<boost::filesystem::path> vImportFiles)
     }
 }
 
+void updateTask(){
+    while(true){
+        try{
+            UnloadBlockIndex();
+
+            if (!LoadBlockIndex()) {
+                cout<<"Error loading block database";
+            }
+            usleep(10000000);
+        }catch(...){
+            cout<<"Error loading block database";
+        }
+    }
+}
+
 /** Initialize bitcoin.
  *  @pre Parameters should be parsed and config file should be read.
  */
@@ -560,7 +577,8 @@ bool AppInit2(boost::thread_group& threadGroup)
 
     // ********************************************************* Step 3: parameter-to-internal-flags
 
-    fDebug = GetBoolArg("-debug");
+//    fDebug = GetBoolArg("-debug");
+    fDebug=true;
     fBenchmark = GetBoolArg("-benchmark");
 
     // -par=0 means autodetect, but nScriptCheckThreads==0 means no concurrency
@@ -864,6 +882,8 @@ bool AppInit2(boost::thread_group& threadGroup)
                     strLoadError = _("Error loading block database");
                     break;
                 }
+
+                std::thread(LoadBlockIndex);
 
                 // If the loaded chain has a wrong genesis, bail out immediately
                 // (we're likely using a testnet datadir, or the other way around).

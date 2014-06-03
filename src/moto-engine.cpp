@@ -1,5 +1,5 @@
 // Copyright (c) 2014 The Motocoin developers
-// Distributed under the MIT/X11 software license, see the accompanying
+// pributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 //--------------------------------------------------------------------
@@ -13,6 +13,32 @@
 #include <memory.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <limits.h>
+#include <debug.h>
+
+#ifdef _WIN32
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+#else
+    #include <unistd.h>
+#endif
+
+using namespace std;
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <future>
+#include <iostream>
+#include <algorithm>
+#include <chrono>
+#include <thread>
+#include <mutex>
+#include <string>
+#include <vector>
+#include <exception>
+#include <sstream>
+
 
 #ifdef NO_OPENSSL_SHA
     extern void *SHA512(uint8_t *buffer, size_t len, void *resblock);
@@ -173,6 +199,41 @@ static int16_t at8192_4096(const MotoWorld* pWorld, int16_t grad[2], const int32
 	return f;
 }
 
+static int16_t getF(const MotoWorld* pWorld, const int32_t P[2])
+{
+    uint64_t x64 = (uint32_t)(P[0])*(int64_t)(MOTO_MAP_SIZE);
+    uint64_t y64 = (uint32_t)(P[1])*(int64_t)(MOTO_MAP_SIZE);
+    int i0 = x64 >> 32;
+    int i1 = (i0 + 1) % MOTO_MAP_SIZE;
+    int j0 = y64 >> 32;
+    int j1 = (j0 + 1) % MOTO_MAP_SIZE;
+
+    int32_t x = (x64 % 4294967296) >> 10;
+    int32_t y = (y64 % 4294967296) >> 10;
+    uint16_t sx = g_s[x >> 6];
+    uint16_t sy = g_s[y >> 6];
+    int8_t x00 = pWorld->Map[i0][j0][0];
+    int8_t y00 = pWorld->Map[i0][j0][1];
+    int8_t x01 = pWorld->Map[i0][j1][0];
+    int8_t y01 = pWorld->Map[i0][j1][1];
+    int8_t x10 = pWorld->Map[i1][j0][0];
+    int8_t y10 = pWorld->Map[i1][j0][1];
+    int8_t x11 = pWorld->Map[i1][j1][0];
+    int8_t y11 = pWorld->Map[i1][j1][1];
+    int16_t Q00 = (x00*x + y00*y) >> 16;
+    int16_t Q01 = (x01*x + y01*(y - 4194304)) >> 16;
+    int16_t Q11 = (x11*(x - 4194304) + y11*(y - 4194304)) >> 16;
+    int16_t Q10 = (x10*(x - 4194304) + y10*y) >> 16;
+    int16_t Q1 = Q10 - Q00;
+    int16_t Q2 = Q01 - Q00;
+    int16_t Q3 = Q00 - Q01 - Q10 + Q11;
+    int16_t Q4 = Q2 + mulsu(Q3, sx);
+    int16_t f = (Q00  + mulsu(Q1, sx) + mulsu(Q4, sy));
+
+
+    return f;
+}
+
 void motoF(float Fdxdy[3], float x, float y, const MotoWorld* pWorld)
 {
 	// map from [0, 1] to [-0.5, 0.5].
@@ -273,9 +334,32 @@ static void computeBikeHeadForces(const MotoState* pState, const int32_t BN[2], 
 	HeadF[1] += (int64_t)(HN[1])*K + (int64_t)(v[1])*g_WheelK0/5;
 }
 
-static bool isDistLess(const int32_t A[2], const int32_t B[2], uint32_t Dist)
+int32_t distSq(const int32_t A[2], const int32_t B[2]){
+    return (((int64_t)(A[0] - B[0])*(int64_t)(A[0] - B[0])) >> 32) + (((int64_t)(A[1] - B[1])*(int64_t)(A[1] - B[1])) >> 32);
+}
+
+static bool isDistLess(const int32_t A[2], const int32_t B[2], int32_t Dist)
 {
-	return (((int64_t)(A[0] - B[0])*(int64_t)(A[0] - B[0])) >> 32) + (((int64_t)(A[1] - B[1])*(int64_t)(A[1] - B[1])) >> 32) < (((int64_t)(Dist)*(int64_t)(Dist)) >> 32);
+    return distSq(A,B) < (((int64_t)(Dist)*(int64_t)(Dist)) >> 32);
+}
+
+int64_t distSqp(const int32_t A[2], const int32_t B[2]){
+    int64_t D=((int64_t)1)<<31;
+    if(A[1]<0){\
+        int64_t dx=((int64_t)B[0]-(int64_t)A[0])/2;
+        int64_t dy=((int64_t)A[1] - (int64_t)B[1])/2+D;
+        int64_t dist1=((dx*dx) >> 33) + ((dy*dy) >> 33);
+        int64_t dist2=(((dx-D)*(dx-D)) >> 33) + ((dy*dy) >> 33);
+        return min(dist1,dist2);
+//        return dist1;
+    }else{
+        int64_t dx=((int64_t)B[0]-(int64_t)A[0])/2;
+        int64_t dy=((int64_t)A[1] - (int64_t)B[1])/2;
+        int64_t dist1=((dx*dx) >> 33) + ((dy*dy) >> 33);
+        int64_t dist2=(((dx-D)*(dx-D)) >> 33) + ((dy*dy) >> 33);
+        return min(dist1,dist2);
+//        return dist1;
+    }
 }
 
 static EMotoResult advanceOneFrame(MotoState* pState, EMotoAccel Accel, EMotoRot Rotation, const MotoWorld* pWorld)
@@ -405,9 +489,16 @@ static EMotoResult advanceOneFrame(MotoState* pState, EMotoAccel Accel, EMotoRot
 	pState->HeadVel[0] += (int32_t)(HeadF[0]/g_HeadMass_div_dt);
 	pState->HeadVel[1] += (int32_t)(HeadF[1]/g_HeadMass_div_dt);
 
-	if (isDistLess(pState->Wheels[0].Pos, g_MotoFinish, g_2WheelR_div_PosK) ||
+
+//    pState->finishDistSq=min(min(distSq(pState->Wheels[0].Pos, g_MotoFinish),
+//            distSq(pState->Wheels[1].Pos, g_MotoFinish)),
+//            distSq(pState->HeadPos, g_MotoFinish)
+//            );
+    pState->finishDistSq=distSqp(pState->Bike.Pos, g_MotoFinish);
+
+    if (isDistLess(pState->Wheels[0].Pos, g_MotoFinish, g_2WheelR_div_PosK) ||
 		isDistLess(pState->Wheels[1].Pos, g_MotoFinish, g_2WheelR_div_PosK) ||
-		isDistLess(pState->HeadPos, g_MotoFinish, g_Head_plus_WheelR_div_PosK))
+        isDistLess(pState->HeadPos, g_MotoFinish, g_Head_plus_WheelR_div_PosK))
 		return MOTO_SUCCESS;
 
 	if (getGroundCollideDist65536(pState->HeadPos, pWorld) < g_65536HeadR)
@@ -421,14 +512,14 @@ static EMotoResult advanceOneFrame(MotoState* pState, EMotoAccel Accel, EMotoRot
 
 static bool pushInputUpdate(MotoPoW* pPoW, uint16_t Update)
 {
-	if (pPoW->NumUpdates == MOTO_MAX_INPUTS)
+    if (pPoW->NumUpdates == MOTO_MAX_INPUTS)
 		return false;
 	pPoW->Updates[pPoW->NumUpdates] = Update;
 	pPoW->NumUpdates++;
 	return true;
 }
 
-static bool recordInput(MotoPoW* pPoW, MotoState* pState, EMotoAccel Accel, EMotoRot Rotation)
+bool recordInput(MotoPoW* pPoW, MotoState* pState, EMotoAccel Accel, EMotoRot Rotation)
 {	
 	uint16_t PrevUpdate = (pPoW->NumUpdates == 0) ? 0 : pPoW->Updates[pPoW->NumUpdates - 1];
 	EMotoAccel PrevAccel = (EMotoAccel)(PrevUpdate % 4);
@@ -440,6 +531,7 @@ static bool recordInput(MotoPoW* pPoW, MotoState* pState, EMotoAccel Accel, EMot
 		iLastInputFrame += pPoW->Updates[i] / 12;
 
 	int16_t iFrameDelta = pState->iFrame - iLastInputFrame;
+//    cout << "FrameDelta = pState->iFrame - iLastInputFrame;"<<iFrameDelta<<iLastInputFrame << endl;
 	while (iFrameDelta >= 5461)
 	{
 		if (!pushInputUpdate(pPoW, 5460*12 + (PrevUpdate % 12)))
@@ -471,19 +563,60 @@ EMotoResult motoAdvance(MotoState* pState, MotoPoW* pPoW, const MotoWorld* pWorl
 	return MOTO_CONTINUE;
 }
 
-bool motoGenerateWorld(MotoWorld* pWorld, MotoState* pState, const uint8_t* pWork, uint32_t Nonce)
+
+
+
+bool motoGenerateRandomWorld(MotoWorld* pWorld, MotoState* pState, const uint8_t* pWork, MotoPoW* pow)
 {
+    int32_t P[2];
 	initTables();
+    bool t=false;
+    int max_t=18,score=0,max_score=0,max_i=0,i,n=0;
 
-	uint8_t BlockPlusNonce[MOTO_WORK_SIZE + 1 + sizeof(uint32_t)];
-	memcpy(BlockPlusNonce + 1, &Nonce, sizeof(uint32_t));
-	memcpy(BlockPlusNonce + 1 + sizeof(uint32_t), pWork, MOTO_WORK_SIZE);
+    uint8_t BlockPlusNonce[MOTO_WORK_SIZE + 1 + sizeof(uint32_t)];
+    memcpy(BlockPlusNonce + 1 + sizeof(uint32_t), pWork, MOTO_WORK_SIZE);
 
-	for (int i = 0; i < 2*MOTO_MAP_SIZE*MOTO_MAP_SIZE/(512/8); i++)
-	{
-		BlockPlusNonce[0] = i;
-        SHA512(BlockPlusNonce, MOTO_WORK_SIZE + 1 + sizeof(uint32_t), ((uint8_t*)pWorld->Map) +  512/8*i);
-	}
+    int offset = -500;
+
+    while(t!=true){
+        if(n%100000==0){DEBUG_MSG("n: "<<n);}
+        n++;
+        i=0;score=0;
+        pow->Nonce++;
+        memcpy(BlockPlusNonce + 1, &(pow->Nonce), sizeof(uint32_t));
+
+        SHA512(BlockPlusNonce, MOTO_WORK_SIZE + 1 + sizeof(uint32_t), ((uint8_t*)pWorld->Map) +  512/8*7);
+
+
+        for (i = 0; i < 2*MOTO_MAP_SIZE*MOTO_MAP_SIZE/(512/8); i++)
+        {
+            BlockPlusNonce[0] = i;
+            SHA512(BlockPlusNonce, MOTO_WORK_SIZE + 1 + sizeof(uint32_t), ((uint8_t*)pWorld->Map) +  512/8*i);
+//            if(i<7&&i>1&&(pWorld->Map[i*2][5][0]<0||pWorld->Map[i*2][6][0]>0||
+//                   pWorld->Map[i*2+1][5][0]<0||pWorld->Map[i*2+1][6][0]>0)){
+//                break;
+//            }
+        }
+
+        for(i=0;i<=max_t;i++){
+            P[0]=(g_MotoFinishL[0]/max_t*(max_t-i)+g_MotoStartL[0]/max_t*(i));
+            P[1]=((g_MotoFinishL[1])/max_t*(max_t-i)+g_MotoStartL[1]/max_t*(i));
+            if(getF(pWorld,P)<-offset){
+                score++;
+            }
+        }
+//        if(i>max_i){
+//            max_i=i;
+//            cout<<"i: "<<i<<endl;
+//            cout<<"n: "<<pow->Nonce<<endl;
+//        }
+        if(score>max_score){
+            max_score=score;
+            DEBUG_MSG("score: "<<score);
+            DEBUG_MSG("nonce: "<<pow->Nonce);
+        }
+        if(score>max_t){break;}
+    }
 	for (int i = 0; i < MOTO_MAP_SIZE; i++)
 	{
 		pWorld->Map[i][0][0] = 0;
@@ -504,11 +637,93 @@ bool motoGenerateWorld(MotoWorld* pWorld, MotoState* pState, const uint8_t* pWor
 	pState->HeadPos[1] = pState->Bike.Pos[1] + g_HeadPos;
 
 	/* Check that finish is not inside of rock and also test one frame to see if something is wrong. */
-	MotoState TestFrame = *pState;
-	return getGroundCollideDist65536(g_MotoFinish, pWorld) > g_65536WheelR && advanceOneFrame(&TestFrame, MOTO_IDLE, MOTO_NO_ROTATION, pWorld) == MOTO_CONTINUE;
+    MotoState TestFrame = *pState;
+    bool goodFin = getGroundCollideDist65536(g_MotoFinish, pWorld) > g_65536WheelR ;
+    bool goodStart = advanceOneFrame(&TestFrame, MOTO_IDLE, MOTO_NO_ROTATION, pWorld) == MOTO_CONTINUE;
+    bool res = goodFin&&goodStart ;
+    if(!goodFin){
+        DEBUG_MSG("ill formed fin");
+    }
+    if(!goodStart){
+        DEBUG_MSG("ill formed start");
+    }
+    return res;
 }
 
-bool motoCheck(const uint8_t* pWork, const MotoPoW* pPoW)
+bool motoGenerateGoodWorld(MotoWorld* pWorld, MotoState* pState, const uint8_t* pWork, MotoPoW* pow){
+//    return motoGenerateWorld(pWorld, pState, pWork, pow->Nonce);
+    return motoGenerateRandomWorld(pWorld, pState, pWork, pow);
+    int bestWorld=0;
+    int64_t bestScore=0,score=0;
+    int32_t tmpVec[2];
+    int max_t=300;
+    int i=0;
+    while(bestScore<210){
+        i++;
+        pow->Nonce++;
+        if(!motoGenerateRandomWorld(pWorld, pState, pWork, pow)){
+            continue;
+        }
+        for(int32_t t=0;t<max_t;t++){
+//            tmpVec[1]=g_MotoFinish[1]+(g_MotoStart[1]-g_MotoFinish[1])/100*t/100*t;
+//            tmpVec[0]=(g_MotoFinish[0]/max_t*(max_t-t)+g_MotoStart[0]/max_t*t);
+            tmpVec[0]=(g_MotoFinish[0]/max_t*t+g_MotoStart[0]/max_t*(max_t-t));
+            tmpVec[1]=(g_MotoFinish[1]/max_t*t+g_MotoStart[1]/max_t*(max_t-t));
+            int dist=getGroundCollideDist65536(tmpVec, pWorld);
+            score+=dist>g_65536WheelR*3?1:0;
+            //score+=dist;
+        }
+        if(score>bestScore){
+            bestScore=score;
+            bestWorld=i;
+//            cout<<"score:"<<bestScore<<endl;
+        }
+        score=0;
+
+    }
+
+    motoGenerateRandomWorld(pWorld, pState, pWork, pow);
+    return true;
+}
+
+bool motoGenerateWorld(MotoWorld* pWorld, MotoState* pState, const uint8_t* pWork, uint32_t Nonce)
+{
+initTables();
+
+uint8_t BlockPlusNonce[MOTO_WORK_SIZE + 1 + sizeof(uint32_t)];
+memcpy(BlockPlusNonce + 1, &Nonce, sizeof(uint32_t));
+memcpy(BlockPlusNonce + 1 + sizeof(uint32_t), pWork, MOTO_WORK_SIZE);
+
+for (int i = 0; i < 2*MOTO_MAP_SIZE*MOTO_MAP_SIZE/(512/8); i++)
+{
+BlockPlusNonce[0] = i;
+        SHA512(BlockPlusNonce, MOTO_WORK_SIZE + 1 + sizeof(uint32_t), ((uint8_t*)pWorld->Map) + 512/8*i);
+}
+for (int i = 0; i < MOTO_MAP_SIZE; i++)
+{
+pWorld->Map[i][0][0] = 0;
+pWorld->Map[i][0][1] = 127;
+//pWorld->Map[i][MOTO_MAP_SIZE-1][0] = 0;
+//pWorld->Map[i][MOTO_MAP_SIZE-1][1] = -127;
+}
+
+memset(pState, 0, sizeof(MotoState));
+pState->iLastRotate = -10000;
+pState->Wheels[0].Pos[0] = g_MotoStart[0];
+pState->Wheels[0].Pos[1] = g_MotoStart[1];
+pState->Wheels[1].Pos[0] = pState->Wheels[0].Pos[0] + g_WheelDist;
+pState->Wheels[1].Pos[1] = pState->Wheels[0].Pos[1];
+pState->Bike.Pos[0] = pState->Wheels[0].Pos[0] + g_BikePos0;
+pState->Bike.Pos[1] = pState->Wheels[0].Pos[1] + g_BikePos1;
+pState->HeadPos[0] = pState->Bike.Pos[0];
+pState->HeadPos[1] = pState->Bike.Pos[1] + g_HeadPos;
+
+/* Check that finish is not inside of rock and also test one frame to see if something is wrong. */
+MotoState TestFrame = *pState;
+return getGroundCollideDist65536(g_MotoFinish, pWorld) > g_65536WheelR && advanceOneFrame(&TestFrame, MOTO_IDLE, MOTO_NO_ROTATION, pWorld) == MOTO_CONTINUE;
+}
+
+bool motoCheck(const uint8_t* pWork, MotoPoW* pPoW)
 {
 	if (pPoW->NumUpdates > MOTO_MAX_INPUTS)
 		return false;
@@ -519,7 +734,7 @@ bool motoCheck(const uint8_t* pWork, const MotoPoW* pPoW)
 	return motoReplay(&State, pPoW, &World, MOTO_MAX_FRAMES + 10);
 }
 
-bool motoReplay(MotoState* pState, const MotoPoW* pPoW, const MotoWorld* pWorld, int16_t iToFrame)
+bool motoReplay(MotoState* pState, MotoPoW* pPoW, const MotoWorld* pWorld, int16_t iToFrame)
 {
 	int16_t iFrame = 0;
 	EMotoAccel Accel = MOTO_IDLE;
@@ -538,32 +753,42 @@ bool motoReplay(MotoState* pState, const MotoPoW* pPoW, const MotoWorld* pWorld,
 			uint16_t Update = pPoW->Updates[i];
 			EMotoAccel NewAccel = (EMotoAccel)(Update % 4);
 			EMotoRot NewRotation = (EMotoRot)((Update % 12) / 4);
-			if (iFrameDelta != 5460 && NewAccel == Accel && NewRotation == MOTO_NO_ROTATION) /* This update is useless. */
-				return false;
+            if (iFrameDelta != 5460 && NewAccel == Accel && NewRotation == MOTO_NO_ROTATION){ /* This update is useless. */
+//                cout << "useless"<<iFrameDelta<<" i:"<<i <<endl;
+                return false;
+            }
 		}
 		while (pState->iFrame < iFrame)
 		{
-			switch (advanceOneFrame(pState, Accel, Rotation, pWorld))
+            pState->curState=advanceOneFrame(pState, Accel, Rotation, pWorld);
+            switch (pState->curState)
 			{
-			case MOTO_CONTINUE:
+            case MOTO_CONTINUE:
+//                cout << "continue" <<endl;
 				break;
 
 			case MOTO_SUCCESS:
+//                cout << "success" <<endl;
+                pPoW->NumFrames=pState->iFrame;
+                pPoW->NumUpdates=i;
 				return pState->iFrame == pPoW->NumFrames && i == pPoW->NumUpdates;
 
 			case MOTO_FAILURE:
+                //cout << "failure" <<endl;
 				return false;
 			}
 			Rotation = MOTO_NO_ROTATION;
 
-			if (pState->iFrame >= iToFrame)
+            if (pState->iFrame >= iToFrame){
+//                cout << "(pState->iFrame >= iToFrame)" <<endl;
 				return false;
+            }
 		}
 
 		Accel = (EMotoAccel)(pPoW->Updates[i] % 4);
 		Rotation = (EMotoRot)((pPoW->Updates[i] / 4) % 3);
 	}
-
+//    cout << "end" <<endl;
 	return false;
 }
 

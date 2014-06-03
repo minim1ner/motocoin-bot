@@ -1,6 +1,8 @@
 #include "moto-protocol.h"
 #include "motogame.h"
 #include "main.h"
+#include <iostream>
+#include <string.h>
 #ifdef _WIN32
     #include <windows.h>
 #endif
@@ -9,7 +11,7 @@ static std::unique_ptr<Motogame> g_pMotogame;
 
 static QString getMotogame(bool LowQ, bool OGL3)
 {
-    QString Prefix = "./";
+    QString Prefix = "/home/vineg/workspace/c++/motocoin/src/build-game-Desktop-Debug/";
 #ifdef _WIN32
     if (!OGL3)
     {
@@ -21,7 +23,7 @@ static QString getMotogame(bool LowQ, bool OGL3)
             Prefix = "./llvmpipe/32/";
     }
 #endif
-    return Prefix + "motogame -nofun" + (LowQ? " -schematic" : "");
+    return Prefix + "motogame -nofun -schematic";
 }
 
 Motogame::Motogame(bool LowQ, bool OGL3, CWallet* pWallet, QObject *parent) :
@@ -78,6 +80,7 @@ void Motogame::onReadAvailable()
 
         MotoWork Work;
         MotoPoW PoW;
+
         if (motoParseMessage(Msg.data(), Work))
         {
             auto iter = findBlock(Work);
@@ -94,6 +97,8 @@ void Motogame::onReadAvailable()
                 CheckWork(pBlock, *m_pWallet, m_ReserveKey);
             }
             updateBlock();
+        }else{
+            std::cout<<"moto: "<<std::string(Msg);
         }
     }
 }

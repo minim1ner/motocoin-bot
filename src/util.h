@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 #include <string>
+#include <stdio.h>
 
 #include <boost/version.hpp>
 #include <boost/thread.hpp>
@@ -177,7 +178,7 @@ bool ATTR_WARN_PRINTF(1,2) error(const char *format, ...);
  * __attribute__((format(printf,X,Y))) gets expanded to __attribute__((format(OutputDebugStringF,X,Y)))
  * which confuses gcc.
  */
-#define printf OutputDebugStringF
+#define printf printf
 
 void LogException(std::exception* pex, const char* pszThread);
 void PrintException(std::exception* pex, const char* pszThread);

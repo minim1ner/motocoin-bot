@@ -2,7 +2,7 @@ TEMPLATE = app
 TARGET = motocoin-qt
 macx:TARGET = "Motocoin-Qt"
 VERSION = 0.8.7.1
-INCLUDEPATH += src src/json src/qt
+INCLUDEPATH += src src/json src/qt src/game
 QT += core gui network
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 DEFINES += QT_GUI BOOST_THREAD_USE_LIB BOOST_SPIRIT_THREADSAFE
@@ -136,7 +136,7 @@ QMAKE_CLEAN += $$PWD/src/leveldb/libleveldb.a; cd $$PWD/src/leveldb ; $(MAKE) cl
 QMAKE_CXXFLAGS_WARN_ON = -fdiagnostics-show-option -Wall -Wextra -Wformat -Wformat-security -Wno-unused-parameter -Wstack-protector
 
 # Input
-DEPENDPATH += src src/json src/qt
+DEPENDPATH += src src/json src/qt src/game
 HEADERS += src/qt/bitcoingui.h \
     src/qt/transactiontablemodel.h \
     src/qt/addresstablemodel.h \
@@ -227,7 +227,8 @@ HEADERS += src/qt/bitcoingui.h \
     src/moto-protocol.h \
     src/moto-engine.h \
     src/moto-engine-const.h \
-    src/qt/gamehelpdialog.h
+    src/qt/gamehelpdialog.h \
+    src/game/debug.h
 
 SOURCES += src/qt/bitcoin.cpp \
     src/qt/bitcoingui.cpp \
