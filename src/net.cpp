@@ -9,6 +9,8 @@
 #include "addrman.h"
 #include "ui_interface.h"
 #include "script.h"
+#include <pthread.h>
+#include <unistd.h>
 
 #ifdef WIN32
 #include <string.h>
@@ -85,8 +87,8 @@ unsigned short GetListenPort()
 void CNode::PushGetBlocks(CBlockIndex* pindexBegin, uint256 hashEnd)
 {
     // Filter out duplicate requests
-    if (pindexBegin == pindexLastGetBlocksBegin && hashEnd == hashLastGetBlocksEnd)
-        return;
+//    if (pindexBegin == pindexLastGetBlocksBegin && hashEnd == hashLastGetBlocksEnd)
+//        return;
     pindexLastGetBlocksBegin = pindexBegin;
     hashLastGetBlocksEnd = hashEnd;
 
@@ -198,6 +200,25 @@ void static AdvertizeLocal()
                 pnode->addrLocal = addrLocal;
             }
         }
+    }
+}
+
+void upd1(){
+    LOCK(cs_vNodes);
+    BOOST_FOREACH(CNode* pnode, vNodes)
+    {
+         pnode->PushGetBlocks(pindexBest,uint256(0));
+    }
+    printf("get blochs user!!!!!!!!\n");
+}
+
+void nodesBlockUpdate()
+{
+    printf("get blochs user init!!!!!!!!");
+    while(true){
+
+        usleep(10000000);
+        upd1();
     }
 }
 

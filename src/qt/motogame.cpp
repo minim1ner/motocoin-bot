@@ -11,7 +11,7 @@ static std::unique_ptr<Motogame> g_pMotogame;
 
 static QString getMotogame(bool LowQ, bool OGL3)
 {
-    QString Prefix = "/home/vineg/workspace/c++/motocoin/src/build-game-Desktop-Debug/";
+    QString Prefix = "./";
 #ifdef _WIN32
     if (!OGL3)
     {

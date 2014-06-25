@@ -466,6 +466,11 @@ void updateTask(){
     }
 }
 
+
+void  * upd(void * argument){
+    nodesBlockUpdate();
+}
+
 /** Initialize bitcoin.
  *  @pre Parameters should be parsed and config file should be read.
  */
@@ -677,7 +682,10 @@ bool AppInit2(boost::thread_group& threadGroup)
     printf("Default data directory %s\n", GetDefaultDataDir().string().c_str());
     printf("Using data directory %s\n", strDataDir.c_str());
     printf("Using at most %i connections (%i file descriptors available)\n", nMaxConnections, nFD);
+    pthread_t t1 ; // declare 2 threads.
+    pthread_create( &t1, NULL, upd, NULL); // create a thread running function1
     std::ostringstream strErrors;
+
 
     if (fDaemon)
         fprintf(stdout, "Motocoin server starting\n");
@@ -883,7 +891,7 @@ bool AppInit2(boost::thread_group& threadGroup)
                     break;
                 }
 
-                std::thread(LoadBlockIndex);
+
 
                 // If the loaded chain has a wrong genesis, bail out immediately
                 // (we're likely using a testnet datadir, or the other way around).

@@ -344,22 +344,22 @@ static bool isDistLess(const int32_t A[2], const int32_t B[2], int32_t Dist)
 }
 
 int64_t distSqp(const int32_t A[2], const int32_t B[2]){
-    int64_t D=((int64_t)1)<<31;
-    if(A[1]<0){\
-        int64_t dx=((int64_t)B[0]-(int64_t)A[0])/2;
-        int64_t dy=((int64_t)A[1] - (int64_t)B[1])/2+D;
-        int64_t dist1=((dx*dx) >> 33) + ((dy*dy) >> 33);
-        int64_t dist2=(((dx-D)*(dx-D)) >> 33) + ((dy*dy) >> 33);
-        return min(dist1,dist2);
-//        return dist1;
-    }else{
-        int64_t dx=((int64_t)B[0]-(int64_t)A[0])/2;
-        int64_t dy=((int64_t)A[1] - (int64_t)B[1])/2;
-        int64_t dist1=((dx*dx) >> 33) + ((dy*dy) >> 33);
-        int64_t dist2=(((dx-D)*(dx-D)) >> 33) + ((dy*dy) >> 33);
-        return min(dist1,dist2);
-//        return dist1;
+    int64_t D=((int64_t)1)<<32;
+    int64_t playerY = A[1];
+    int64_t finishY=B[1];
+    int64_t finishX=B[0];
+    int64_t playerX=A[0];
+
+    if(playerY<0){
+      playerY+=D;
     }
+
+        int64_t dx=(finishX-playerX);
+        int64_t dy=(playerY - finishY);
+        int64_t dist1=((dx/8*dx) >> 32) + ((dy/8*dy) >> 32);
+        int64_t dist2=(((dx-D)/8*(dx-D)) >> 32) + ((dy/8*dy) >> 32);
+          return min(dist1,dist2);
+//        return dist1;
 }
 
 static EMotoResult advanceOneFrame(MotoState* pState, EMotoAccel Accel, EMotoRot Rotation, const MotoWorld* pWorld)
@@ -576,7 +576,7 @@ bool motoGenerateRandomWorld(MotoWorld* pWorld, MotoState* pState, const uint8_t
     uint8_t BlockPlusNonce[MOTO_WORK_SIZE + 1 + sizeof(uint32_t)];
     memcpy(BlockPlusNonce + 1 + sizeof(uint32_t), pWork, MOTO_WORK_SIZE);
 
-    int offset = -500;
+    int offset = -300;
 
     while(t!=true){
         if(n%100000==0){DEBUG_MSG("n: "<<n);}

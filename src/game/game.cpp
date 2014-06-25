@@ -149,7 +149,7 @@ static void updatePow(){
     MotoState tmpFrame;
     EMotoAccel accel=MOTO_GAS_RIGHT;
     EMotoRot rotation;
-    int last_rotation=-g_rotationPeriod;
+    int last_rotation=0;
     int last_acceleration = 0;
     g_PoW.NumUpdates = 0;
     g_PoW.NumFrames =g_Work.TimeTarget-1;
@@ -169,7 +169,7 @@ static void updatePow(){
             }
         }
         if(g_commands[i].rotation!=MOTO_NO_ROTATION){
-            if(g_commands[i].time-last_rotation>g_rotationPeriod){
+            if(g_commands[i].time-last_rotation>g_rotationPeriod+1){
                last_rotation=g_commands[i].time;
                rotation=g_commands[i].rotation;
             }
@@ -184,9 +184,9 @@ static void updatePow(){
 static void regeneratePoW(){
 
     memcpy (g_commands, g_bestCommands, sizeof (g_bestCommands)) ;
-    for(int i=randLim(g_commandsCnt);i<g_commandsCnt;i++){
+    for(int i=max(0,randLim(g_commandsCnt+g_commandsCnt/3)-g_commandsCnt/3);i<g_commandsCnt;i++){
 //    for(int i=0;i<g_commandsCnt;i++){
-        g_commands[i].time+=randLim(16*g_temp-15)-8*g_temp;
+        g_commands[i].time+=randLim(8*g_temp-7)-4*g_temp;
         g_commands[i].time=max(0,min(g_commands[i].time,g_totalFrames+1));
     }
 
@@ -614,10 +614,10 @@ static void play()
                     g_temp=0;
                     DEBUG_MSG("success: "<<g_finishDistSq<<"time:"<<g_Frame.iFrame/150);
                     finalizeBatch();
-                    for(int i=5;i>0;i--){
-                        usleep(1000000);
-                        DEBUG_MSG("sleep: "<<i);
-                    }
+//                    for(int i=60;i>0;i--){
+//                        usleep(1000000);
+//                        DEBUG_MSG("sleep: "<<i);
+//                    }
                     startBrute();
                     break;
                 }
@@ -836,9 +836,14 @@ int main(int argc, char** argv)
 
     DEBUG_MSG("go 7");
 
-    startBrute();
+    if(g_PlayingForFun){
+        g_State = STATE_PLAYING;
+    }else{
+        startBrute();
+    }
 
-//    g_State = STATE_PLAYING;
+
+    goToNextWorld();
 
     g_InputThread = thread(readStdIn);
 
