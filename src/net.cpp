@@ -87,8 +87,16 @@ unsigned short GetListenPort()
 void CNode::PushGetBlocks(CBlockIndex* pindexBegin, uint256 hashEnd)
 {
     // Filter out duplicate requests
-//    if (pindexBegin == pindexLastGetBlocksBegin && hashEnd == hashLastGetBlocksEnd)
-//        return;
+    if (pindexBegin == pindexLastGetBlocksBegin && hashEnd == hashLastGetBlocksEnd)
+        return;
+    pindexLastGetBlocksBegin = pindexBegin;
+    hashLastGetBlocksEnd = hashEnd;
+
+    PushMessage("getblocks", CBlockLocator(pindexBegin), hashEnd);
+}
+
+void CNode::PushGetBlocksNoFilter(CBlockIndex* pindexBegin, uint256 hashEnd)
+{
     pindexLastGetBlocksBegin = pindexBegin;
     hashLastGetBlocksEnd = hashEnd;
 
@@ -205,19 +213,23 @@ void static AdvertizeLocal()
 
 void upd1(){
     LOCK(cs_vNodes);
-    BOOST_FOREACH(CNode* pnode, vNodes)
-    {
-         pnode->PushGetBlocks(pindexBest,uint256(0));
+//    BOOST_FOREACH(CNode* pnode, vNodes)
+//    {
+//         pnode->PushGetBlocks(pindexBest,uint256(0));
+//    }
+
+    if(vNodes.size()>0){
+        vNodes[rand()%vNodes.size()]->PushGetBlocksNoFilter(pindexBest,uint256(0));
+    }else{
+        printf("no connections\n");
     }
-    printf("get blochs user!!!!!!!!\n");
 }
 
 void nodesBlockUpdate()
 {
-    printf("get blochs user init!!!!!!!!");
     while(true){
-
         usleep(10000000);
+        printf("chain update requested\n");
         upd1();
     }
 }
